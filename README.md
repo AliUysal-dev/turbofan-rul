@@ -1,5 +1,5 @@
-# Turbofan Engine Remaining Useful Life (RUL) Estimation System
-### Production-Grade Predictive Maintenance & MLOps Pipeline
+# Turbofan Engine RUL Estimation with XGBoost
+### End-to-End ML Pipeline with FastAPI & MLflow
 
 [![Python](https://img.shields.io/badge/Python-3.11-1f425f.svg)](https://www.python.org/)
 [![FastAPI](https://img.shields.io/badge/Framework-FastAPI-005571.svg)](https://fastapi.tiangolo.com/)
@@ -7,9 +7,10 @@
 [![Model](https://img.shields.io/badge/Model-XGBoost_Regressor-black.svg)](https://xgboost.readthedocs.io/)
 [![Docker](https://img.shields.io/badge/Container-Docker-2496ED.svg)](https://www.docker.com/)
 
-Bu depo, ticari turbofan uçak motorlarının Kalan Faydalı Ömür (**Remaining Useful Life - RUL**) kestirimini gerçekleştiren uçtan uca bir makine öğrenmesi sistemidir. Proje, NASA Prognostics Center of Excellence tarafından yayımlanan **C-MAPSS (FD001)** telemetri verisi üzerinde doğrulanmış olup; özellik mühendisliği, model yaşam döngüsü takibi ve üretim çıkarım servisini (Inference API) modüler bir yazılım mimarisinde birleştirir.
+Bu depo, ticari turbofan uçak motorlarının Kalan Faydalı Ömür (**Remaining Useful Life - RUL**) kestirimini gerçekleştiren örnek bir uçtan uca makine öğrenmesi uygulamasıdır. Proje, NASA Prognostics Center of Excellence tarafından yayımlanan **C-MAPSS (FD001)** telemetri verisi üzerinde doğrulanmış olup; özellik mühendisliği, model yaşam döngüsü takibi ve üretim çıkarım servisini (Inference API) modüler bir yazılım mimarisinde birleştirir.
 
-**Canlı Demo:** [https://turbofan-rul-api-ep09.onrender.com](https://turbofan-rul-api-ep09.onrender.com)
+**Canlı Demo:** [https://turbofan-rul-api-ep09.onrender.com](https://turbofan-rul-api-ep09.onrender.com)  
+*Not: Render ücretsiz servisi nedeniyle ilk istek 30-50 saniye gecikebilir.*
 
 ---
 
@@ -110,7 +111,7 @@ turbofan-rul/
 
 ### 1. Ortamın Hazırlanması
 ```bash
-git clone [https://github.com/AliUysal-dev/turbofan-rul.git](https://github.com/AliUysal-dev/turbofan-rul.git)
+git clone https://github.com/AliUysal-dev/turbofan-rul.git
 cd turbofan-rul
 conda create -n turbofan python=3.11 -y
 conda activate turbofan
@@ -147,6 +148,8 @@ docker run -p 8000:8000 turbofan-rul:latest
 **İçerik Türü:** `application/json`  
 **Canlı Uç Nokta:** `https://turbofan-rul-api-ep09.onrender.com/predict`
 
+> **Önemli:** Kayan pencere özelliklerinin (window=5 ve window=20) hesaplanabilmesi için `history` dizisi **en az 21 zaman adımı (cycle)** içermelidir. Aksi takdirde API hata döndürecektir.
+
 ### İstek Formatı (Request Payload)
 ```json
 {
@@ -179,3 +182,9 @@ docker run -p 8000:8000 turbofan-rul:latest
   "recommended_action": "Acil bakım planla; motor bir sonraki uçuştan önce hangara çekilmeli."
 }
 ```
+
+**Sağlık Durumu Eşik Değerleri:**
+- `HEALTHY` → Tahmini RUL > 50 döngü
+- `WARNING` → 20 < Tahmini RUL ≤ 50 döngü
+- `CRITICAL` → Tahmini RUL ≤ 20 döngü
+  
