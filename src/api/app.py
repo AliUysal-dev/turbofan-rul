@@ -58,15 +58,17 @@ async def lifespan(app: FastAPI):
         max_results=1
     )
 
-    if runs.empty:
-        logger.error("Deney içinde kayıtlı aktif model koşusu (run) bulunamadı.")
-        raise RuntimeError("Model koşusu bulunamadı.")
+   # Model dosyasını (MLmodel) doğrudan mlruns klasöründen bul
+    model_files = list(config.MLRUNS_DIR.rglob("MLmodel"))
+    if not model_files:
+        logger.error("mlruns içinde model dosyası (MLmodel) bulunamadı.")
+        raise RuntimeError("Model dosyası bulunamadı.")
 
-    latest_run_id = runs.iloc[0]["run_id"]
-    model_uri = f"runs:/{latest_run_id}/model"
-    
-    logger.info("Üretim modeli MLflow'dan yükleniyor: %s", model_uri)
-    model_cache["model"] = mlflow.xgboost.load_model(model_uri)
+    model_dir = str(model_files[0].parent)
+    latest_run_id = runs.iloc[0]["run_id"] if not runs.empty else "production_model"
+
+    logger.info("Üretim modeli doğrudan diskten yükleniyor: %s", model_dir)
+    model_cache["model"] = mlflow.xgboost.load_model(model_dir)
     model_cache["run_id"] = latest_run_id
     logger.info("Model başarıyla belleğe alındı. Servis istek kabul etmeye hazır.")
 
@@ -139,7 +141,7 @@ def predict_rul(payload: PredictionRequest):
     # 4. Operasyonel karar kuralı
     if predicted_rul <= 25.0:
         health_status = "CRITICAL"
-        action = "Acil bakım planla; motor bir sonraki uçuştan önce hangara çekilmeli."
+        action = "Acil bakım planla"
     elif predicted_rul <= 50.0:
         health_status = "WARNING"
         action = "Gözlem sıklığını artır; planlı bakım penceresi rezerve et."
