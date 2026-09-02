@@ -1,0 +1,10 @@
+artifact_location: file:///C:/Users/dell/Desktop/turbofan-rul/notebooks/../mlruns/863826732218489687/models/m-b54faa766fb5446e9d81abece7cf261d/artifacts
+creation_timestamp: 1788331216544
+experiment_id: '863826732218489687'
+last_updated_timestamp: 1788331433503
+model_id: m-b54faa766fb5446e9d81abece7cf261d
+model_type: null
+name: model
+source_run_id: aeae6f30c6fd416ebeb47533444cfdca
+status: 2
+status_message: null

@@ -1,0 +1,23 @@
+artifact_path: file:///C:/Users/dell/Desktop/turbofan-rul/notebooks/../mlruns/863826732218489687/models/m-b54faa766fb5446e9d81abece7cf261d/artifacts
+flavors:
+  python_function:
+    env:
+      conda: conda.yaml
+      virtualenv: python_env.yaml
+    loader_module: mlflow.sklearn
+    model_path: model.skops
+    predict_fn: predict
+    python_version: 3.11.16
+  sklearn:
+    code: null
+    pickled_model: model.skops
+    serialization_format: skops
+    sklearn_version: 1.9.0
+    skops_trusted_types: null
+mlflow_version: 3.15.2
+model_id: m-b54faa766fb5446e9d81abece7cf261d
+model_size_bytes: 25976
+model_uuid: m-b54faa766fb5446e9d81abece7cf261d
+prompts: null
+run_id: aeae6f30c6fd416ebeb47533444cfdca
+utc_time_created: '2026-09-02 06:40:17.521143'

@@ -1,6 +1,6 @@
 # Veri ve modeller (büyük dosyalar repo'ya atılmaz)
 data/
-models/
+/models/
 
 
 # Python ve sanal ortam önbellekleri

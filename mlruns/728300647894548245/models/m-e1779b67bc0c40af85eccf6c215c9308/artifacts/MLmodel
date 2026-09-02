@@ -1,0 +1,22 @@
+artifact_path: file:///C:/Users/dell/Desktop/turbofan-rul/notebooks/../mlruns/728300647894548245/models/m-e1779b67bc0c40af85eccf6c215c9308/artifacts
+flavors:
+  python_function:
+    data: model.ubj
+    env:
+      conda: conda.yaml
+      virtualenv: python_env.yaml
+    loader_module: mlflow.xgboost
+    python_version: 3.11.16
+  xgboost:
+    code: null
+    data: model.ubj
+    model_class: xgboost.sklearn.XGBRegressor
+    model_format: ubj
+    xgb_version: 3.2.0
+mlflow_version: 3.15.2
+model_id: m-e1779b67bc0c40af85eccf6c215c9308
+model_size_bytes: 417244
+model_uuid: m-e1779b67bc0c40af85eccf6c215c9308
+prompts: null
+run_id: 03291b984ae94a5c99dbdecc171db986
+utc_time_created: '2026-09-02 09:17:53.632523'
