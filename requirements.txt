@@ -5,3 +5,8 @@ seaborn
 scikit-learn
 mlflow
 jupyter
+xgboost
+fastapi
+uvicorn
+streamlit
+pytest
