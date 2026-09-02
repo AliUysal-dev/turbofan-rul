@@ -1,26 +1,21 @@
+import logging
 from contextlib import asynccontextmanager
 from pathlib import Path
-from typing import Any, Dict, List
+from typing import Any, Dict
 import numpy as np
 import pandas as pd
 import mlflow.xgboost
 from fastapi import FastAPI, HTTPException, status
 from fastapi.responses import RedirectResponse
 
-from src.utils.logger import logger
 from src.api.schemas import PredictionRequest, PredictionResponse
 
-# İsteğe bağlı şema ve konfigürasyon importları
-try:
-    from src.api.schemas import HealthResponse
-except ImportError:
-    HealthResponse = None
-
-try:
-    import src.config as config
-except ImportError:
-    config = None
-
+# Standart kurumsal loglayıcı
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s | %(levelname)-8s | %(name)s:%(funcName)s:%(lineno)d - %(message)s"
+)
+logger = logging.getLogger("turbofan_api")
 
 # Global model önbelleği
 model_cache: Dict[str, Any] = {}
@@ -28,8 +23,7 @@ model_cache: Dict[str, Any] = {}
 
 def _resolve_model_directory() -> str:
     """
-    Hem yerel Windows ortamında hem de Docker/Render Linux ortamında
-    mlruns dizini altındaki MLmodel dosyasını bularak model dizinini döner.
+    Konteyner ve yerel ortamda mlruns dizinini tarayarak geçerli model klasörünü tespit eder.
     """
     search_roots = [
         Path("mlruns"),
@@ -42,28 +36,17 @@ def _resolve_model_directory() -> str:
         if root.exists():
             mlmodel_candidates = list(root.rglob("MLmodel"))
             if mlmodel_candidates:
-                # İlk bulunan geçerli model dizinini seç
                 chosen_dir = str(mlmodel_candidates[0].parent)
-                logger.info("Fiziksel model dizini tespit edildi: %s", chosen_dir)
+                logger.info("Model dizini bulundu: %s", chosen_dir)
                 return chosen_dir
 
-    raise FileNotFoundError("mlruns dizininde geçerli bir 'MLmodel' dosyası bulunamadı.")
+    raise FileNotFoundError("mlruns dizini altında 'MLmodel' yapılandırma dosyası bulunamadı.")
 
 
-def _engineer_features_safe(df: pd.DataFrame) -> pd.DataFrame:
+def _engineer_features(df: pd.DataFrame) -> pd.DataFrame:
     """
-    src.features modülündeki fonksiyonları çağırır; fonksiyon bulunamazsa
-    aynı zaman serisi kayan pencere (rolling) özelliklerini türetir.
+    Zaman serisi kayan pencere (rolling) ve sapma (delta) özelliklerini hesaplar.
     """
-    try:
-        import src.features as feats
-        for fn_name in ["engineer_features", "create_features", "add_features", "calculate_features", "prepare_features"]:
-            if hasattr(feats, fn_name):
-                return getattr(feats, fn_name)(df)
-    except Exception as exc:
-        logger.warning("src.features çağrısında hata, yerel hesaplayıcıya geçiliyor: %s", exc)
-
-    # Fallback: Kayan pencere ve türev hesaplamaları
     df_out = df.copy()
     sensor_cols = [c for c in df_out.columns if c.startswith("sensor_")]
 
@@ -78,33 +61,28 @@ def _engineer_features_safe(df: pd.DataFrame) -> pd.DataFrame:
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """
-    FastAPI yaşam döngüsü yöneticisi: Servis ayağa kalkarken modeli belleğe alır,
-    kapanırken kaynakları temizler.
-    """
-    logger.info("Turbofan RUL API başlatılıyor. Model diski taranıyor...")
-    
+    """FastAPI yaşam döngüsü: Başlangıçta modeli belleğe alır."""
+    logger.info("Turbofan RUL API başlatılıyor...")
     try:
         model_dir = _resolve_model_directory()
-        logger.info("Model yükleniyor: %s", model_dir)
+        logger.info("XGBoost modeli MLflow üzerinden yükleniyor: %s", model_dir)
         
         loaded_model = mlflow.xgboost.load_model(model_dir)
         model_cache["model"] = loaded_model
         model_cache["model_path"] = model_dir
         model_cache["run_id"] = Path(model_dir).parent.name
         
-        logger.info("XGBoost modeli başarıyla belleğe alındı. Servis hazır.")
+        logger.info("Model belleğe başarıyla alındı. Servis istek kabulüne hazır.")
     except Exception as exc:
-        logger.error("Model yükleme aşamasında kritik hata: %s", str(exc), exc_info=True)
+        logger.error("Model yükleme hatası: %s", str(exc), exc_info=True)
         raise RuntimeError(f"Servis başlatılamadı: {exc}")
 
     yield
 
     model_cache.clear()
-    logger.info("Model bellekten temizlendi, servis güvenli şekilde durduruldu.")
+    logger.info("Model bellekten tahliye edildi.")
 
 
-# FastAPI Uygulama Tanımı
 app = FastAPI(
     title="Turbofan Engine RUL Prediction API",
     description="NASA C-MAPSS FD001 telemetri verisiyle motor Kalan Faydalı Ömür (RUL) kestirim servisi.",
@@ -115,36 +93,31 @@ app = FastAPI(
 
 @app.get("/", include_in_schema=False)
 async def root_redirect():
-    """Kök dizine gelen kullanıcıları doğrudan Swagger dokümantasyonuna yönlendirir."""
+    """Kök dizin isteğini otomatik olarak Swagger dokümantasyonuna aktarır."""
     return RedirectResponse(url="/docs")
 
 
-@app.get("/health", tags=["Monitoring"], response_model=HealthResponse if HealthResponse else None)
+@app.get("/health", tags=["Monitoring"])
 async def health_check():
-    """Servis ve model yükleme durumunu doğrulayan uç nokta."""
+    """Konteyner ve modelin canlılık durumunu raporlar."""
     is_ready = "model" in model_cache
-    payload = {
+    return {
         "status": "healthy" if is_ready else "unhealthy",
         "model_loaded": is_ready,
         "model_run_id": str(model_cache.get("run_id", "local_artifact"))
     }
-    return payload
 
 
 @app.post("/predict", tags=["Inference"], response_model=PredictionResponse)
 async def predict(payload: PredictionRequest):
-    """
-    Motor geçmiş telemetri verisini alır, özellik mühendisliği uygular
-    ve kalan faydalı ömür kestirimi ile bakım kararı üretir.
-    """
+    """Gelen telemetri geçmişi üzerinden RUL kestirimi ve karar desteği üretir."""
     if "model" not in model_cache:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="Model henüz belleğe yüklenmedi veya servis hazırlık aşamasında."
+            detail="Model henüz hazır değil."
         )
 
     try:
-        # 1. Gelen geçmiş telemetri serisini DataFrame formatına çevir
         records = []
         for cycle in payload.history:
             cycle_dict = cycle.model_dump() if hasattr(cycle, "model_dump") else cycle.dict()
@@ -158,15 +131,12 @@ async def predict(payload: PredictionRequest):
             row.update(cycle_dict.get("sensors", {}))
             records.append(row)
 
-        df_input = pd.DataFrame(records)
-        df_input = df_input.sort_values("time_in_cycles").reset_index(drop=True)
+        df_input = pd.DataFrame(records).sort_values("time_in_cycles").reset_index(drop=True)
         current_cycle = int(df_input["time_in_cycles"].iloc[-1])
 
-        # 2. Özellik dönüşümlerini uygula
-        df_features = _engineer_features_safe(df_input)
+        df_features = _engineer_features(df_input)
         target_row = df_features.iloc[[-1]].copy()
 
-        # 3. Modelin beklediği sütunları hizala
         model = model_cache["model"]
         expected_cols = None
 
@@ -184,12 +154,10 @@ async def predict(payload: PredictionRequest):
             drop_candidates = ["unit_number", "time_in_cycles", "RUL"]
             X = target_row.drop(columns=[c for c in drop_candidates if c in target_row.columns])
 
-        # 4. Model tahmini ve clipping (RUL max 125)
         raw_pred = model.predict(X)
         predicted_rul = float(np.clip(raw_pred[0], a_min=0.0, a_max=125.0))
         predicted_rul = round(predicted_rul, 2)
 
-        # 5. Karar destek mantığı
         if predicted_rul <= 15:
             health_status = "CRITICAL"
             recommended_action = "Acil bakım planla"
@@ -209,8 +177,8 @@ async def predict(payload: PredictionRequest):
         )
 
     except Exception as exc:
-        logger.error("Tahmin üretimi sırasında istisna oluştu: %s", str(exc), exc_info=True)
+        logger.error("Tahmin sürecinde hata: %s", str(exc), exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Tahmin üretilemedi: {str(exc)}"
+            detail=f"Tahmin hatası: {str(exc)}"
         )
