@@ -110,7 +110,7 @@ turbofan-rul/
 
 ### 1. Ortamın Hazırlanması
 ```bash
-git clone [https://github.com/AliUysal-dev/turbofan-rul.git](https://github.com/AliUysal-dev/turbofan-rul.git)
+git clone https://github.com/AliUysal-dev/turbofan-rul.git
 cd turbofan-rul
 conda create -n turbofan python=3.11 -y
 conda activate turbofan
