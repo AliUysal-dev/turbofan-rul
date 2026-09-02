@@ -1,0 +1,14 @@
+# Veri ve modeller (büyük dosyalar repo'ya atılmaz)
+data/
+models/
+mlruns/
+
+# Python ve sanal ortam önbellekleri
+__pycache__/
+*.pyc
+.ipynb_checkpoints/
+.env
+
+# İşletim sistemi kalıntıları
+.DS_Store
+Thumbs.db
