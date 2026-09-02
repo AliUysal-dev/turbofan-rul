@@ -9,6 +9,8 @@
 
 Bu depo, ticari turbofan uçak motorlarının Kalan Faydalı Ömür (**Remaining Useful Life - RUL**) kestirimini gerçekleştiren uçtan uca bir makine öğrenmesi sistemidir. Proje, NASA Prognostics Center of Excellence tarafından yayımlanan **C-MAPSS (FD001)** telemetri verisi üzerinde doğrulanmış olup; özellik mühendisliği, model yaşam döngüsü takibi ve üretim çıkarım servisini (Inference API) modüler bir yazılım mimarisinde birleştirir.
 
+**Canlı Demo:** [https://turbofan-rul-api-ep09.onrender.com](https://turbofan-rul-api-ep09.onrender.com)
+
 ---
 
 ## 1. Sistem Mimarisi ve Tasarım İlkeleri
@@ -128,6 +130,8 @@ uvicorn src.api.app:app --host 127.0.0.1 --port 8000 --reload
 ```
 Etkileşimli OpenAPI dokümantasyonu: `http://127.0.0.1:8000/docs`
 
+Canlı ortamda etkileşimli dokümantasyon: [https://turbofan-rul-api-ep09.onrender.com/docs](https://turbofan-rul-api-ep09.onrender.com/docs)
+
 ### 4. Konteyner Ortamı (Docker)
 Servisi izole bir Docker konteynerinde derlemek ve çalıştırmak için:
 ```bash
@@ -140,7 +144,8 @@ docker run -p 8000:8000 turbofan-rul:latest
 ## 6. API Arayüzü ve Veri Sözleşmesi
 
 **Endpoint:** `POST /predict`  
-**İçerik Türü:** `application/json`
+**İçerik Türü:** `application/json`  
+**Canlı Uç Nokta:** `https://turbofan-rul-api-ep09.onrender.com/predict`
 
 ### İstek Formatı (Request Payload)
 ```json
