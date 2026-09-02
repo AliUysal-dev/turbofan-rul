@@ -1,0 +1,14 @@
+artifact_uri: file:///C:/Users/dell/Desktop/turbofan-rul/notebooks/../mlruns/863826732218489687/aeae6f30c6fd416ebeb47533444cfdca/artifacts
+end_time: 1788331433655
+entry_point_name: ''
+experiment_id: '863826732218489687'
+lifecycle_stage: active
+run_id: aeae6f30c6fd416ebeb47533444cfdca
+run_name: linear_regression_baseline
+source_name: ''
+source_type: 4
+source_version: ''
+start_time: 1788331213562
+status: 3
+tags: []
+user_id: dell

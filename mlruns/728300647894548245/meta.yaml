@@ -1,0 +1,9 @@
+artifact_location: file:///C:/Users/dell/Desktop/turbofan-rul/notebooks/../mlruns/728300647894548245
+creation_time: 1788339601860
+effective_trace_archival_retention: null
+experiment_id: '728300647894548245'
+last_update_time: 1788339601860
+lifecycle_stage: active
+name: turbofan-rul-advanced
+trace_location: null
+workspace: default

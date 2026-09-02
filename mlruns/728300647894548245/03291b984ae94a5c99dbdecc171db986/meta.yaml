@@ -1,0 +1,14 @@
+artifact_uri: file:///C:/Users/dell/Desktop/turbofan-rul/notebooks/../mlruns/728300647894548245/03291b984ae94a5c99dbdecc171db986/artifacts
+end_time: 1788340739745
+entry_point_name: ''
+experiment_id: '728300647894548245'
+lifecycle_stage: active
+run_id: 03291b984ae94a5c99dbdecc171db986
+run_name: xgboost_final_test_evaluation
+source_name: ''
+source_type: 4
+source_version: ''
+start_time: 1788340670169
+status: 3
+tags: []
+user_id: dell
