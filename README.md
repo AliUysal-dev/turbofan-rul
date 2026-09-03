@@ -1,8 +1,3 @@
-Lisans adımını sonraya bırakıyoruz; doğrudan **`README.md`** dosyanı güncelleyelim.
-
-Aşağıdaki metin rapordaki tüm bulgulara (doğrulanmış deney tablosu, 81 özellik hesabı, veri seti indirme adımları) göre hazırlanmış ve emojilerden tamamen arındırılmıştır.
-
-VS Code'da **`README.md`** dosyasını aç, içindeki her şeyi sil ve doğrudan bu bloğu yapıştır:
 
 ```markdown
 # Turbofan Engine Remaining Useful Life (RUL) Prediction API
@@ -149,7 +144,7 @@ Eğitim boru hattını yerelde sıfırdan çalıştırmak için NASA C-MAPSS ver
 
 ```bash
 # Repoyu klonlayın
-git clone [https://github.com/AliUysal-dev/turbofan-rul.git](https://github.com/AliUysal-dev/turbofan-rul.git)
+git clone https://github.com/AliUysal-dev/turbofan-rul.git
 cd turbofan-rul
 
 # İmajı derleyin
