@@ -1,5 +1,5 @@
 
-```markdown
+
 # Turbofan Engine Remaining Useful Life (RUL) Prediction API
 
 NASA C-MAPSS FD001 telemetri verileriyle eğitilmiş, endüstriyel standartlarda uçtan uca makine öğrenmesi ve kestirimci bakım servisidir. Servis; çok değişkenli sensör zaman serisi verilerinden kayan pencere özellikleri türetir, motorun kalan faydalı ömrünü (Remaining Useful Life) tahmin eder ve kural tabanlı karar destek protokolüyle bakım aksiyonu önerir.
