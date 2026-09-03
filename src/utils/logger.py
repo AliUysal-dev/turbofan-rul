@@ -1,33 +1,23 @@
-"""
-src/utils/logger.py
-Merkezi ve standartlaştırılmış konsol/dosya günlükleme yapılandırması.
-"""
 import logging
 import sys
-from pathlib import Path
 
 
-def get_logger(name: str = "turbofan_rul", log_file: Path | None = None) -> logging.Logger:
-    """Endüstriyel standartta formatlanmış bir logger döndürür."""
+def get_logger(name: str = "turbofan") -> logging.Logger:
+    """
+    Ö-11 Çözümü: 
+    Uvicorn altında mükerrer log oluşmasını engelleyen (propagate=False)
+    ve kurumsal standartta formatlanmış merkezi logger üretir.
+    """
     logger = logging.getLogger(name)
     
-    if logger.hasHandlers():
-        return logger
-
-    logger.setLevel(logging.INFO)
-    log_format = logging.Formatter(
-        fmt="%(asctime)s | %(levelname)-7s | %(name)s:%(funcName)s:%(lineno)d - %(message)s",
-        datefmt="%Y-%m-%d %H:%M:%S"
-    )
-
-    console_handler = logging.StreamHandler(sys.stdout)
-    console_handler.setFormatter(log_format)
-    logger.addHandler(console_handler)
-
-    if log_file:
-        log_file.parent.mkdir(parents=True, exist_ok=True)
-        file_handler = logging.FileHandler(log_file, encoding="utf-8")
-        file_handler.setFormatter(log_format)
-        logger.addHandler(file_handler)
+    if not logger.handlers:
+        logger.setLevel(logging.INFO)
+        handler = logging.StreamHandler(sys.stdout)
+        formatter = logging.Formatter(
+            "%(asctime)s | %(levelname)-8s | %(name)s:%(funcName)s:%(lineno)d - %(message)s"
+        )
+        handler.setFormatter(formatter)
+        logger.addHandler(handler)
+        logger.propagate = False
 
     return logger

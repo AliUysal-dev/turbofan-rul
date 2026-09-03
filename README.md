@@ -1,190 +1,209 @@
-# Turbofan Engine RUL Estimation with XGBoost
-### End-to-End ML Pipeline with FastAPI & MLflow
+Lisans adımını sonraya bırakıyoruz; doğrudan **`README.md`** dosyanı güncelleyelim.
 
-[![Python](https://img.shields.io/badge/Python-3.11-1f425f.svg)](https://www.python.org/)
-[![FastAPI](https://img.shields.io/badge/Framework-FastAPI-005571.svg)](https://fastapi.tiangolo.com/)
-[![MLflow](https://img.shields.io/badge/Lifecycle-MLflow-0194E2.svg)](https://mlflow.org/)
-[![Model](https://img.shields.io/badge/Model-XGBoost_Regressor-black.svg)](https://xgboost.readthedocs.io/)
-[![Docker](https://img.shields.io/badge/Container-Docker-2496ED.svg)](https://www.docker.com/)
+Aşağıdaki metin rapordaki tüm bulgulara (doğrulanmış deney tablosu, 81 özellik hesabı, veri seti indirme adımları) göre hazırlanmış ve emojilerden tamamen arındırılmıştır.
 
-Bu depo, ticari turbofan uçak motorlarının Kalan Faydalı Ömür (**Remaining Useful Life - RUL**) kestirimini gerçekleştiren örnek bir uçtan uca makine öğrenmesi uygulamasıdır. Proje, NASA Prognostics Center of Excellence tarafından yayımlanan **C-MAPSS (FD001)** telemetri verisi üzerinde doğrulanmış olup; özellik mühendisliği, model yaşam döngüsü takibi ve üretim çıkarım servisini (Inference API) modüler bir yazılım mimarisinde birleştirir.
+VS Code'da **`README.md`** dosyasını aç, içindeki her şeyi sil ve doğrudan bu bloğu yapıştır:
 
-**Canlı Demo:** [https://turbofan-rul-api-ep09.onrender.com](https://turbofan-rul-api-ep09.onrender.com)  
-*Not: Render ücretsiz servisi nedeniyle ilk istek 30-50 saniye gecikebilir.*
+```markdown
+# Turbofan Engine Remaining Useful Life (RUL) Prediction API
+
+NASA C-MAPSS FD001 telemetri verileriyle eğitilmiş, endüstriyel standartlarda uçtan uca makine öğrenmesi ve kestirimci bakım servisidir. Servis; çok değişkenli sensör zaman serisi verilerinden kayan pencere özellikleri türetir, motorun kalan faydalı ömrünü (Remaining Useful Life) tahmin eder ve kural tabanlı karar destek protokolüyle bakım aksiyonu önerir.
 
 ---
 
-## 1. Sistem Mimarisi ve Tasarım İlkeleri
+## Canlı Servis Erişimi
 
-Sistem, veri bilimi prototipleri ile kurumsal yazılım mühendisliği arasındaki ayrımı netleştirmek üzere dört katmanlı bir yapıda tasarlanmıştır:
+Uygulama, Render altyapısı üzerinde Docker konteyneri olarak canlıda hizmet vermektedir. API uç noktalarını aşağıdaki bağlantılar üzerinden doğrudan test edebilirsiniz:
 
-```text
-[ C-MAPSS Raw Stream ]
-         │
-         ▼
-[ Feature Pipeline ] ──> Dynamic Rolling (w=5, 20) & Delta Extraction (61 Features)
-         │
-         ▼
-[ XGBoost Estimator ] ──> Piecewise Linear Degradation Modeling (RUL_max = 125)
-         │
-         ▼
-[ Artifact Registry ] ──> MLflow Run Tracking & Model Serialization
-         │
-         ▼
-[ Inference Service ] ──> FastAPI Lifespan Engine -> Decision Engine (Healthy/Warning/Critical)
-```
+* Canlı API Dokümantasyonu (Swagger UI): https://turbofan-rul-api-ep09.onrender.com/docs
+* Servis Canlılık Kontrolü: https://turbofan-rul-api-ep09.onrender.com/health
 
-### Temel Mühendislik Kararları
-* **Yapılandırılmış Günlükleme (Logging):** Betik içi standart `print` ifadeleri elenmiş; zaman damgası, log seviyesi (`INFO`, `ERROR`) ve modül izi sağlayan merkezi bir logger entegre edilmiştir.
-* **Tip Güvenliği ve Şema Doğrulama:** API giriş/çıkış sözleşmeleri `Pydantic v2` veri sınıfları üzerinden sıkı biçimde doğrulanır.
-* **Bağımsız Konfigürasyon:** Veri yolları, pencere parametreleri ve model hiperparametreleri merkezi `config.py` modülünde toplanmıştır.
+Not: Sistem sunucusuz ücretsiz katmanda (Free Tier) barındırılmaktadır. 15 dakika süresince istek almadığında uyku moduna geçer; ilk tetiklemede açılış süresi 30–40 saniye sürebilir.
 
 ---
 
-## 2. Metodoloji ve Modelleme Stratejisi
+## Mimari ve Tasarım Tercihleri
 
-### Hedef Değişken Modellemesi (Piecewise Linear Target)
-Turbofan motorlarındaki mekanik aşınma ilk çalışma döngülerinde ihmal edilebilir düzeydedir. Bu fiziksel gerçeği modele yansıtmak amacıyla erken döngülerdeki hedef değişken $RUL_{max} = 125$ seviyesinde sabitlenmiştir:
+### 1. Özellik Mühendisliği (Feature Engineering)
+* Kayan Pencere İstatistikleri: Bilgilendirici 14 sensör ve 2 operasyonel ayar (toplam 16 baz değişken) üzerinden motor bazında 5 ve 20 çevrimlik kayan ortalama (rolling mean) ile 5 çevrimlik standart sapma (rolling std) değerleri hesaplanır.
+* Bozulma Trendi Tespiti: Anlık ölçümler ile 20 çevrimlik kayan ortalama arasındaki fark (delta_20) indeks hizalı olarak türetilerek aşınma ve anomali trendleri yakalanır.
+* Toplam Özellik Hacmi: 16 değişken x 5 temsil (ham, roll_mean_5, roll_std_5, roll_mean_20, delta_20) + time_in_cycles olmak üzere model eğitiminde ve çıkarımında tam 81 özellik kullanılır.
 
-$$RUL_{target}(t) = \min(RUL_{actual}(t), 125)$$
+### 2. Modelleme ve Deney Doğrulama
+* Algoritma: Doğrusal olmayan yıpranma eğrilerini modellemek amacıyla optimize edilmiş XGBoost Regressor kullanılmıştır.
+* Hedef Etiketleme (Piecewise Linear RUL): İlk işletme evrelerindeki aşınmasız durumu yansıtmak adına hedef RUL etiketi literatüre uygun şekilde maksimum 125 çevrimle sınırlandırılmıştır (clipping).
+* Değerlendirme Metrikleri: Standart regresyon metriklerinin (RMSE, R2) yanı sıra, erken tahminleri az, geç tahminleri ise operasyonel risk nedeniyle katlanarak cezalandıran asimetrik NASA PHM 2008 skor fonksiyonu kullanılmıştır.
 
-### Özellik Mühendisliği (Feature Engineering)
-* **Sabit Sinyal Eliminasyonu:** Operasyonel koşullar altında varyansı sıfır olan 8 sensör ve ayar değişkeni çıkarılmıştır.
-* **Zaman Serisi Türetimleri:** Kalan 14 bilgilendirici sensör üzerinden motor bazlı 5 ve 20 döngülük kayan ortalamalar (`rolling mean`), kısa vadeli dalgalanmaları yakalamak için 5 döngülük standart sapmalar (`rolling std`) ve uzun vadeli aşınmayı modellemek için 20 döngülük farklar (`delta`) hesaplanmıştır.
+### 3. Model Karşılaştırma ve Doğrulama Kayıtları
 
-### Değerlendirme Metrikleri
-Sistem yalnızca simetrik metriklerle (RMSE, MAE) değil, havacılık endüstrisi standardı olan **NASA PHM 2008 Asimetrik Ceza Fonksiyonu** ile değerlendirilir. Bu fonksiyonda geciken tahminler ($d > 0$), erken tahminlere ($d < 0$) kıyasla üssel olarak daha sert cezalandırılır:
+MLflow takip sisteminde kayıtlı doğrulanabilir deney sonuçları:
 
-$$d = \hat{y} - y$$
+| Model | Veri Bölmesi | RMSE | R2 | NASA PHM Skoru | Durum |
+| :--- | :--- | :--- | :--- | :--- | :--- |
+| Baseline (Linear Regression) | Doğrulama (Validation) | 17.93 | 0.815 | - | Referans Baseline |
+| XGBoost + Rolling Features | Test (FD001 Hold-out) | 16.52 | 0.830 | 475.87 | Üretim Modeli (Run: 6ccbe5e4) |
 
-$$S = \sum_{i=1}^{N} \begin{cases} e^{-\frac{d_i}{13}} - 1 & \text{için } d_i < 0 \\ e^{\frac{d_i}{10}} - 1 & \text{için } d_i \ge 0 \end{cases}$$
+Not: Tablodaki değerler mlruns/ kayıt defterindeki gerçek çalıştırma çıktılarıyla birebir eşleşmektedir. Doğrulama bölmesi motor bazlı (unit-based group split) yapılmış, ardışık çevrimlerin sızması engellenmiştir.
 
----
-
-## 3. Deneysel Sonuçlar ve Karşılaştırmalı Başarım
-
-Model performansı, NASA'nın eğitim sürecinde modele gösterilmeyen 100 test motorunun son döngüleri üzerinde test edilmiştir:
-
-| Model ve Konfigürasyon | Test RMSE | Test MAE | Test $R^2$ | NASA PHM Skoru |
-|---|---|---|---|---|
-| Lineer Regresyon (Baseline) | 29.40 | 22.10 | 0.5120 | 2,850.40 |
-| Random Forest (Ham Sensörler) | 20.15 | 14.80 | 0.7250 | 1,120.30 |
-| LightGBM (Ham Sensörler) | 19.85 | 14.20 | 0.7410 | 980.15 |
-| **XGBoost + Dynamic Time-Series Features (Bu Çalışma)** | **16.52** | **11.56** | **0.8300** | **475.87** |
+### 4. Servis Mimarisi (FastAPI)
+* Bellek Önbellekleme (Lifespan Context): Sabit üretim modeli servis ayağa kalkarken RAM'e bir defa alınır; disk okuma maliyeti sıfırlanarak milisaniye gecikme hedeflenir.
+* Şema Doğrulama (Pydantic v2): Kayan pencere gereksinimi nedeniyle en az 20 döngü geçmişi (min_length=20) ve 14 zorunlu sensörün eksiksiz varlığı şema seviyesinde denetlenir.
 
 ---
 
-## 4. Dizin Yapısı
+## API Spesifikasyonu
 
-```text
-turbofan-rul/
-├── data/
-│   └── raw/                    # C-MAPSS FD001 ham veri dosyaları
-├── mlruns/                     # MLflow artifact ve model deposu
-├── notebooks/                  # Veri keşfi ve prototipleme
-│   ├── 01_eda.ipynb
-│   ├── 02_baseline_model.ipynb
-│   └── 03_advanced_modeling.ipynb
-├── src/                        # Üretim kodu
-│   ├── api/
-│   │   ├── app.py              # FastAPI servis katmanı ve lifespan yöneticisi
-│   │   └── schemas.py          # Pydantic v2 veri sözleşmeleri
-│   ├── utils/
-│   │   └── logger.py           # Yapılandırılmış loglama altyapısı
-│   ├── config.py               # Merkezi parametre ve yol yönetimi
-│   ├── features.py             # Zaman serisi dönüşüm fonksiyonları
-│   ├── metrics.py              # Değerlendirme ve ceza metrikleri
-│   └── train.py                # Pipeline orkestrasyon ve eğitim sınıfı
-├── Dockerfile                  # Konteyner dağıtım konfigürasyonu
-├── .dockerignore
-├── requirements.txt            # Python bağımlılıkları
-└── README.md
-```
+### 1. Canlılık Kontrolü
 
----
+* Yol: GET /health
+* İşlev: Konteynerin aktifliğini ve modelin belleğe yüklendiğini doğrular.
 
-## 5. Kurulum ve Çalıştırma
-
-### Gereksinimler
-* Python 3.11+
-* Conda veya Python Sanal Ortamı
-
-### 1. Ortamın Hazırlanması
-```bash
-git clone https://github.com/AliUysal-dev/turbofan-rul.git
-cd turbofan-rul
-conda create -n turbofan python=3.11 -y
-conda activate turbofan
-pip install -r requirements.txt
-```
-
-### 2. Model Eğitimi ve MLflow Kaydı
-Eğitim boru hattı ham veriyi işler, zaman serisi özelliklerini türetir, XGBoost modelini eğitir ve tüm sonuçları yerel MLflow deposuna mühürler:
-```bash
-python src/train.py
-```
-
-### 3. API Servisinin Başlatılması
-Modeli belleğe alan ve REST uç noktası sunan FastAPI servisi:
-```bash
-uvicorn src.api.app:app --host 127.0.0.1 --port 8000 --reload
-```
-Etkileşimli OpenAPI dokümantasyonu: `http://127.0.0.1:8000/docs`
-
-Canlı ortamda etkileşimli dokümantasyon: [https://turbofan-rul-api-ep09.onrender.com/docs](https://turbofan-rul-api-ep09.onrender.com/docs)
-
-### 4. Konteyner Ortamı (Docker)
-Servisi izole bir Docker konteynerinde derlemek ve çalıştırmak için:
-```bash
-docker build -t turbofan-rul:latest .
-docker run -p 8000:8000 turbofan-rul:latest
-```
-
----
-
-## 6. API Arayüzü ve Veri Sözleşmesi
-
-**Endpoint:** `POST /predict`  
-**İçerik Türü:** `application/json`  
-**Canlı Uç Nokta:** `https://turbofan-rul-api-ep09.onrender.com/predict`
-
-> **Önemli:** Kayan pencere özelliklerinin (window=5 ve window=20) hesaplanabilmesi için `history` dizisi **en az 21 zaman adımı (cycle)** içermelidir. Aksi takdirde API hata döndürecektir.
-
-### İstek Formatı (Request Payload)
+Örnek Yanıt:
 ```json
 {
-  "unit_number": 42,
+  "status": "healthy",
+  "model_loaded": true,
+  "model_type": "XGBoostRegressor"
+}
+
+```
+
+### 2. Kalan Faydalı Ömür Kestirimi
+
+* Yol: POST /predict
+* İşlev: Motorun geçmiş telemetri serisini alır, 81 özelliği türetir ve RUL kestirimi ile bakım aksiyonu üretir.
+
+Örnek İstek Gövdesi:
+
+```json
+{
+  "unit_number": 1,
   "history": [
     {
-      "time_in_cycles": 260,
-      "setting_1": 0.0021,
-      "setting_2": 0.0003,
+      "time_in_cycles": 1,
+      "setting_1": -0.0007,
+      "setting_2": -0.0004,
       "setting_3": 100.0,
       "sensors": {
-        "sensor_2": 643.90, "sensor_3": 1602.40, "sensor_4": 1428.80,
-        "sensor_7": 551.20, "sensor_8": 2388.22, "sensor_9": 9070.10,
-        "sensor_11": 48.15, "sensor_12": 520.10, "sensor_13": 2388.24,
-        "sensor_14": 8145.20, "sensor_15": 8.5120, "sensor_17": 395,
-        "sensor_20": 38.45, "sensor_21": 23.1200
+        "sensor_2": 641.82,
+        "sensor_3": 1589.70,
+        "sensor_4": 1400.60,
+        "sensor_7": 554.36,
+        "sensor_8": 2388.06,
+        "sensor_9": 9046.19,
+        "sensor_11": 47.47,
+        "sensor_12": 521.66,
+        "sensor_13": 2388.02,
+        "sensor_14": 8138.62,
+        "sensor_15": 8.4195,
+        "sensor_17": 392.0,
+        "sensor_20": 39.06,
+        "sensor_21": 23.4190
       }
     }
   ]
 }
+
 ```
 
-### Yanıt Formatı (Response Payload)
+Örnek Yanıt:
+
 ```json
 {
-  "unit_number": 42,
-  "current_cycle": 260,
-  "predicted_rul": 15.81,
-  "health_status": "CRITICAL",
-  "recommended_action": "Acil bakım planla; motor bir sonraki uçuştan önce hangara çekilmeli."
+  "unit_number": 1,
+  "current_cycle": 20,
+  "predicted_rul": 112.45,
+  "health_status": "HEALTHY",
+  "recommended_action": "Normal operasyon devam edebilir; telemetri değerleri nominal aralıkta."
 }
+
 ```
 
-**Sağlık Durumu Eşik Değerleri:**
-- `HEALTHY` → Tahmini RUL > 50 döngü
-- `WARNING` → 20 < Tahmini RUL ≤ 50 döngü
-- `CRITICAL` → Tahmini RUL ≤ 20 döngü
-  
+---
+
+## Karar Destek Protokolü
+
+| Tahmin Edilen RUL | Durum Kodu | Önerilen Bakım Aksiyonu |
+| --- | --- | --- |
+| > 50 Çevrim | HEALTHY | Sensör değerleri nominal aralıkta; planlı uçuş operasyonu sürdürülür. |
+| 21 – 50 Çevrim | WARNING | Aşınma trendi tespit edildi; periyodik kontrol sıklığı artırılır, planlı bakım listesine alınır. |
+| 0 – 20 Çevrim | CRITICAL | Kritik eşik aşıldı; motor bir sonraki uçuştan önce hangara çekilerek acil bakıma alınır. |
+
+---
+
+## Yerel Kurulum ve Çalıştırma
+
+### 1. Veri Setinin Temini (C-MAPSS FD001)
+
+Eğitim boru hattını yerelde sıfırdan çalıştırmak için NASA C-MAPSS veri setini indirin:
+
+1. NASA Prognostics Data Repository üzerinden C-MAPSS veri setini temin edin.
+2. Aşağıdaki üç dosyayı projenin data/raw/ dizinine yerleştirin:
+* train_FD001.txt
+* test_FD001.txt
+* RUL_FD001.txt
+
+
+
+### 2. Docker ile Çalıştırma
+
+```bash
+# Repoyu klonlayın
+git clone [https://github.com/AliUysal-dev/turbofan-rul.git](https://github.com/AliUysal-dev/turbofan-rul.git)
+cd turbofan-rul
+
+# İmajı derleyin
+docker build -t turbofan-rul:latest .
+
+# Konteyneri başlatın
+docker run -p 8000:8000 turbofan-rul:latest
+
+```
+
+Arayüze http://localhost:8000/docs adresinden erişebilirsiniz.
+
+### 3. Python Ortamında Çalıştırma
+
+```bash
+# Sanal ortam
+python -m venv venv
+venv\Scripts\activate      # Windows
+source venv/bin/activate   # Linux / macOS
+
+# Bağımlılıklar
+pip install -r requirements.txt
+
+# Modeli eğitme
+python src/train.py
+
+# Servisi başlatma
+uvicorn src.api.app:app --host 0.0.0.0 --port 8000 --reload
+
+# Birim testlerini çalıştırma
+python -m pytest tests/ -v
+
+```
+
+---
+
+## Dizin Yapısı
+
+```text
+turbofan-rul/
+├── Dockerfile                  # Konteyner derleme talimatı
+├── requirements.txt            # Python kütüphane bağımlılıkları
+├── README.md                   # Proje teknik dokümantasyonu
+├── models/
+│   └── production_model/       # Üretime mühürlenmiş XGBoost model ağırlıkları
+├── src/
+│   ├── api/
+│   │   ├── app.py              # FastAPI giriş noktası, lifespan ve yönlendirme
+│   │   └── schemas.py          # Pydantic v2 veri modelleri ve doğrulayıcılar
+│   ├── features.py             # Kayan pencere ve delta özellik türetimi
+│   ├── train.py                # Model eğitim boru hattı
+│   └── config.py               # Proje sabitleri ve yol yapılandırmaları
+├── tests/
+│   └── test_features.py        # Özellik türetimi ve hizalama regresyon testleri
+└── notebooks/                  # Keşifçi veri analizi not defterleri
+
+```

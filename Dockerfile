@@ -10,7 +10,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 # 4. Servis kodlarını ve eğitilmiş MLflow modelini kopyala
 COPY src/ ./src/
-COPY mlruns/ ./mlruns/
+COPY models/ ./models/
 
 # 5. API portunu dışarı aç
 EXPOSE 8000

@@ -1,89 +1,65 @@
-"""
-src/features.py
-Veri okuma, ön işleme ve zaman serisi özellik mühendisliği fonksiyonları.
-"""
+from typing import List, Optional
 import pandas as pd
 
-# Sütun Tanımları
-INDEX_COLS = ["unit_number", "time_in_cycles"]
-SETTING_COLS = ["setting_1", "setting_2", "setting_3"]
-SENSOR_COLS = [f"sensor_{i}" for i in range(1, 22)]
-ALL_COLUMNS = INDEX_COLS + SETTING_COLS + SENSOR_COLS
-
-CONSTANT_FEATURES = [
-    "sensor_1", "sensor_5", "sensor_6", "sensor_10",
-    "sensor_16", "sensor_18", "sensor_19", "setting_3"
+# Modelin kullandığı 14 bilgilendirici sensör
+INFORMATIVE_SENSORS: List[str] = [
+    "sensor_2", "sensor_3", "sensor_4", "sensor_7", "sensor_8",
+    "sensor_9", "sensor_11", "sensor_12", "sensor_13", "sensor_14",
+    "sensor_15", "sensor_17", "sensor_20", "sensor_21"
 ]
 
-INFORMATIVE_SENSORS = [
-    col for col in (SETTING_COLS + SENSOR_COLS)
-    if col not in CONSTANT_FEATURES
-]
-
-MAX_RUL = 125
+# Özellik türetimine dahil edilen 2 operasyonel ayar
+INFORMATIVE_SETTINGS: List[str] = ["setting_1", "setting_2"]
 
 
-def load_raw_data(filepath: str) -> pd.DataFrame:
-    """C-MAPSS boşlukla ayrılmış ham veri setini yükler."""
-    return pd.read_csv(filepath, sep=r"\s+", header=None, names=ALL_COLUMNS)
-
-
-def add_piecewise_rul(df: pd.DataFrame, max_rul: int = MAX_RUL) -> pd.DataFrame:
-    """Eğitim verisine gerçek ve kırpılmış (piecewise) RUL etiketlerini ekler."""
-    df_out = df.copy()
-    max_cycle = df_out.groupby("unit_number")["time_in_cycles"].max().reset_index()
-    max_cycle.columns = ["unit_number", "max_cycle"]
-    df_out = df_out.merge(max_cycle, on="unit_number", how="left")
-    df_out["RUL"] = df_out["max_cycle"] - df_out["time_in_cycles"]
-    df_out["RUL_clipped"] = df_out["RUL"].clip(upper=max_rul)
-    return df_out
-
-
-def generate_time_series_features(df: pd.DataFrame, sensors: list = INFORMATIVE_SENSORS) -> pd.DataFrame:
+def generate_time_series_features(
+    df: pd.DataFrame,
+    sensors: Optional[List[str]] = None,
+    settings: Optional[List[str]] = None
+) -> pd.DataFrame:
     """
-    Motor bazında 5 ve 20 döngülük kayan ortalama/sapma ve 
-    20 döngülük delta özelliklerini türetir.
+    Zaman serisi telemetri verilerinden kayan pencere (rolling) ve 
+    fark (delta) özelliklerini türetir.
+    
+    K-03 Çözümü:
+    1. df.sort_values(["unit_number", "time_in_cycles"]) ile sıralama garantiye alınır.
+    2. Kayan istatistikler motor bazında (unit_number) izole hesaplanır.
+    3. Delta hesabı .values (pozisyonel) yerine indeks eşleşmesiyle yapılır.
+       Böylece karışık sıralı veya iç içe geçmiş motor verilerinde kayma oluşmaz.
     """
-    df_feat = df.copy()
+    if df.empty:
+        return df.copy()
 
-    # 1. 5 döngülük pencereler (mean & std)
-    roll_mean_5 = (
-        df_feat.groupby("unit_number")[sensors]
-        .rolling(window=5, min_periods=1)
-        .mean()
-        .reset_index(level=0, drop=True)
+    # 1. Sıralama güvencesi (K-03 çözümü)
+    df_sorted = df.sort_values(["unit_number", "time_in_cycles"]).reset_index(drop=True)
+
+    target_sensors = sensors if sensors is not None else INFORMATIVE_SENSORS
+    target_settings = settings if settings is not None else INFORMATIVE_SETTINGS
+    
+    # 14 sensör + 2 ayar = 16 dönüşüm kolonu
+    transform_cols = [c for c in (target_sensors + target_settings) if c in df_sorted.columns]
+
+    # 2. Motor bazında kayan pencere istatistikleri
+    grouped = df_sorted.groupby("unit_number")[transform_cols]
+
+    roll_mean_5 = grouped.rolling(window=5, min_periods=1).mean().droplevel(0)
+    roll_std_5 = grouped.rolling(window=5, min_periods=1).std().droplevel(0).fillna(0.0)
+    roll_mean_20 = grouped.rolling(window=20, min_periods=1).mean().droplevel(0)
+
+    # 3. İndeks hizalı delta hesabı (Kesinlikle .values kullanılmaz)
+    deltas_20 = df_sorted[transform_cols].sub(roll_mean_20)
+
+    # 4. Sütun adlandırmaları
+    roll_mean_5.columns = [f"{c}_rolling_mean_5" for c in transform_cols]
+    roll_std_5.columns = [f"{c}_rolling_std_5" for c in transform_cols]
+    roll_mean_20_renamed = roll_mean_20.copy()
+    roll_mean_20_renamed.columns = [f"{c}_rolling_mean_20" for c in transform_cols]
+    deltas_20.columns = [f"{c}_delta_20" for c in transform_cols]
+
+    # 5. Özellikleri birleştir (16 ham + 64 türetilmiş + time_in_cycles = 81 özellik)
+    df_features = pd.concat(
+        [df_sorted, roll_mean_5, roll_std_5, roll_mean_20_renamed, deltas_20],
+        axis=1
     )
-    roll_mean_5.columns = [f"{col}_roll_mean_5" for col in sensors]
 
-    roll_std_5 = (
-        df_feat.groupby("unit_number")[sensors]
-        .rolling(window=5, min_periods=1)
-        .std()
-        .reset_index(level=0, drop=True)
-        .fillna(0)
-    )
-    roll_std_5.columns = [f"{col}_roll_std_5" for col in sensors]
-
-    # 2. 20 döngülük kayan ortalama
-    roll_mean_20 = (
-        df_feat.groupby("unit_number")[sensors]
-        .rolling(window=20, min_periods=1)
-        .mean()
-        .reset_index(level=0, drop=True)
-    )
-    roll_mean_20.columns = [f"{col}_roll_mean_20" for col in sensors]
-
-    # 3. Delta Özellikleri (Anlık - 20 Trendi)
-    deltas = pd.DataFrame(
-        df_feat[sensors].values - roll_mean_20.values,
-        columns=[f"{col}_delta_20" for col in sensors],
-        index=df_feat.index
-    )
-
-    return pd.concat([df_feat, roll_mean_5, roll_std_5, roll_mean_20, deltas], axis=1)
-
-
-def get_feature_columns(df: pd.DataFrame) -> list:
-    """Eğitimde girdi olarak kullanılacak özellik sütunlarını filtreler."""
-    excluded = CONSTANT_FEATURES + ["unit_number", "max_cycle", "RUL", "RUL_clipped"]
-    return [c for c in df.columns if c not in excluded]
+    return df_features

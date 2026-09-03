@@ -1,13 +1,17 @@
-# Veri ve modeller (büyük dosyalar repo'ya atılmaz)
+# Ham ve işlenmiş veri dosyaları
 data/
-/models/
 
+# MLflow yerel çalıştırma kalıntıları (Ö-06: Windows yollarını engellemek için)
+mlruns/
+mlartifacts/
 
 # Python ve sanal ortam önbellekleri
 __pycache__/
 *.pyc
 .ipynb_checkpoints/
+.pytest_cache/
 .env
+venv/
 
 # İşletim sistemi kalıntıları
 .DS_Store

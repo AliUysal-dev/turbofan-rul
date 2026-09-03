@@ -1,4 +1,3 @@
-import logging
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any, Dict
@@ -8,49 +7,49 @@ import mlflow.xgboost
 from fastapi import FastAPI, HTTPException, status
 from fastapi.responses import RedirectResponse
 
+from src.utils.logger import get_logger
 from src.api.schemas import PredictionRequest, PredictionResponse
 from src.features import generate_time_series_features, INFORMATIVE_SENSORS
 
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s | %(levelname)-8s | %(name)s:%(funcName)s:%(lineno)d - %(message)s"
-)
-logger = logging.getLogger("turbofan_api")
+# Ö-11: Merkezi loglama entegrasyonu[cite: 1, 2]
+logger = get_logger("turbofan_api")
 
+# Global model önbelleği
 model_cache: Dict[str, Any] = {}
 
-def _resolve_model_directory() -> str:
-    search_roots = [
-        Path("mlruns"),
-        Path("/app/mlruns"),
-        Path(__file__).resolve().parents[2] / "mlruns",
-        Path(__file__).resolve().parents[1] / "mlruns",
-    ]
-    for root in search_roots:
-        if root.exists():
-            mlmodel_candidates = list(root.rglob("MLmodel"))
-            if mlmodel_candidates:
-                chosen_dir = str(mlmodel_candidates[0].parent)
-                logger.info("Model dizini bulundu: %s", chosen_dir)
-                return chosen_dir
-    raise FileNotFoundError("mlruns dizini altında 'MLmodel' bulunamadı.")
+# K-01 & Ö-06: Sabit üretim modeli yolu[cite: 1, 2]
+BASE_DIR = Path(__file__).resolve().parents[2]
+MODEL_DIR = BASE_DIR / "models" / "production_model"
+FALLBACK_MODEL_DIR = Path("models/production_model")
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    """FastAPI yaşam döngüsü: Sabit şampiyon XGBoost modelini belleğe alır[cite: 1, 2]."""
     logger.info("Turbofan RUL API başlatılıyor...")
+
+    target_path = MODEL_DIR if MODEL_DIR.exists() else FALLBACK_MODEL_DIR
+
+    if not (target_path / "MLmodel").exists():
+        logger.critical("Üretim modeli bulunamadı: %s", target_path)
+        raise RuntimeError(f"Kritik hata: {target_path} altında 'MLmodel' dosyası bulunamadı.")
+
     try:
-        model_dir = _resolve_model_directory()
-        loaded_model = mlflow.xgboost.load_model(model_dir)
+        logger.info("Şampiyon XGBoost modeli diskten yükleniyor: %s", target_path)
+        loaded_model = mlflow.xgboost.load_model(str(target_path))
         model_cache["model"] = loaded_model
-        model_cache["model_path"] = model_dir
-        model_cache["run_id"] = Path(model_dir).parent.name
-        logger.info("Model belleğe alındı.")
+        model_cache["model_path"] = str(target_path)
+        model_cache["model_type"] = "XGBoostRegressor"
+        logger.info("XGBoost modeli başarıyla belleğe alındı. Servis hazır.")
     except Exception as exc:
         logger.error("Model yükleme hatası: %s", str(exc), exc_info=True)
         raise RuntimeError(f"Servis başlatılamadı: {exc}")
+
     yield
+
     model_cache.clear()
     logger.info("Model bellekten tahliye edildi.")
+
 
 app = FastAPI(
     title="Turbofan Engine RUL Prediction API",
@@ -59,21 +58,27 @@ app = FastAPI(
     lifespan=lifespan
 )
 
+
 @app.get("/", include_in_schema=False)
 async def root_redirect():
+    """Kök dizine gelen istekleri Swagger arayüzüne yönlendirir."""
     return RedirectResponse(url="/docs")
+
 
 @app.get("/health", tags=["Monitoring"])
 async def health_check():
+    """Konteyner ve modelin sağlık durumunu raporlar."""
     is_ready = "model" in model_cache
     return {
         "status": "healthy" if is_ready else "unhealthy",
         "model_loaded": is_ready,
-        "model_run_id": str(model_cache.get("run_id", "local_artifact"))
+        "model_type": model_cache.get("model_type", "unknown")
     }
+
 
 @app.post("/predict", tags=["Inference"], response_model=PredictionResponse)
 async def predict(payload: PredictionRequest):
+    """Motor telemetri serisini alır, RUL kestirimi ve bakım aksiyonu üretir."""
     if "model" not in model_cache:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
@@ -81,7 +86,7 @@ async def predict(payload: PredictionRequest):
         )
 
     try:
-        # 1. Ham veriyi DataFrame'e dönüştür
+        # 1. Ham telemetri geçmişini DataFrame'e dönüştür
         records = []
         for cycle in payload.history:
             cycle_dict = cycle.model_dump() if hasattr(cycle, "model_dump") else cycle.dict()
@@ -98,45 +103,36 @@ async def predict(payload: PredictionRequest):
         df_input = pd.DataFrame(records).sort_values("time_in_cycles").reset_index(drop=True)
         current_cycle = int(df_input["time_in_cycles"].iloc[-1])
 
-        # 2. En az 20 döngü kontrolü (READEME'de 21 yazıyor, siz hangisini isterseniz)
-        #    window=20 olduğu için 20 yeterli, ama siz 21 diyorsanız 21 yapın.
-        MIN_CYCLES = 20
-        if len(df_input) < MIN_CYCLES:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"En az {MIN_CYCLES} döngü geçmişi gönderilmelidir (gönderilen: {len(df_input)})."
-            )
-
-        # 3. Özellik mühendisliği (eğitimdeki ile aynı fonksiyon ve aynı sensör listesi)
+        # 2. Eğitimle aynı özellik mühendisliği fonksiyonu (81 özellik)[cite: 1, 2]
         df_features = generate_time_series_features(df_input, sensors=INFORMATIVE_SENSORS)
 
-        # 4. Modelin beklediği sütunları al
+        # 3. Modelin beklediği sütun hizalaması
         model = model_cache["model"]
         if hasattr(model, "feature_names_in_"):
             expected_cols = list(model.feature_names_in_)
+        elif hasattr(model, "get_booster"):
+            expected_cols = model.get_booster().feature_names
         else:
-            # fallback: modelden alınamazsa, tüm özellik sütunlarını kullan (risklidir)
             expected_cols = [c for c in df_features.columns if c not in ["unit_number", "time_in_cycles"]]
 
-        # 5. Son satırı seç ve sadece beklenen sütunları al
         target_row = df_features.iloc[[-1]]
         X = target_row[expected_cols].copy()
 
-        # 6. Tahmin
+        # 4. Model kestirimi ve clipping (maksimum 125 çevrim)[cite: 1, 2]
         raw_pred = model.predict(X)
         predicted_rul = float(np.clip(raw_pred[0], a_min=0.0, a_max=125.0))
         predicted_rul = round(predicted_rul, 2)
 
-        # 7. Sağlık durumu (READEME ile uyumlu eşikler)
+        # 5. Karar destek protokolü
         if predicted_rul <= 20:
             health_status = "CRITICAL"
             recommended_action = "Acil bakım planla; motor bir sonraki uçuştan önce hangara çekilmeli."
         elif predicted_rul <= 50:
             health_status = "WARNING"
-            recommended_action = "Planlı bakımı gözden geçir, yakın takip et."
+            recommended_action = "Planlı bakımı gözden geçir, periyodik kontrol sıklığını artır."
         else:
             health_status = "HEALTHY"
-            recommended_action = "Normal operasyon devam edebilir, rutin kontroller yeterli."
+            recommended_action = "Normal operasyon devam edebilir; telemetri değerleri nominal aralıkta."
 
         return PredictionResponse(
             unit_number=payload.unit_number,
@@ -149,8 +145,9 @@ async def predict(payload: PredictionRequest):
     except HTTPException:
         raise
     except Exception as exc:
-        logger.error("Tahmin hatası: %s", str(exc), exc_info=True)
+        # Ö-05: İç hata ayrıntılarını istemciye sızdırmadan güvenli loglama[cite: 1, 2]
+        logger.error("Tahmin sürecinde dahili hata oluştu: %s", str(exc), exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Tahmin hatası: {str(exc)}"
+            detail="Tahmin hesaplanırken dahili bir sunucu hatası oluştu."
         )
