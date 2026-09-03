@@ -121,16 +121,10 @@ MLflow takip sisteminde kayıtlı doğrulanabilir deney sonuçları:
 ## Karar Destek Protokolü
 
 | Tahmin Edilen RUL | Durum Kodu | Önerilen Bakım Aksiyonu |
-| --- | --- | --- |
-| > 50 Çevrim | HEALTHY | Sensör değerleri nominal aralıkta; planlı uçuş operasyonu sürdürülür.
-
- |
-| 21 – 50 Çevrim | WARNING | Aşınma trendi tespit edildi; periyodik kontrol sıklığı artırılır, planlı bakım listesine alınır.
-
- |
-| 0 – 20 Çevrim | CRITICAL | Kritik eşik aşıldı; motor bir sonraki uçuştan önce hangara çekilerek acil bakıma alınır.
-
- |
+| :--- | :--- | :--- |
+| > 50 Çevrim | HEALTHY | Sensör değerleri nominal aralıkta; planlı uçuş operasyonu sürdürülür. |
+| 21 – 50 Çevrim | WARNING | Aşınma trendi tespit edildi; periyodik kontrol sıklığı artırılır, planlı bakım listesine alınır. |
+| 0 – 20 Çevrim | CRITICAL | Kritik eşik aşıldı; motor bir sonraki uçuştan önce hangara çekilerek acil bakıma alınır. |
 
 ---
 
