@@ -4,7 +4,7 @@
 
 NASA C-MAPSS FD001 telemetri verileriyle eğitilmiş, endüstriyel standartlarda uçtan uca makine öğrenmesi ve kestirimci bakım servisidir. Servis; çok değişkenli sensör zaman serisi verilerinden kayan pencere özellikleri türetir, motorun kalan faydalı ömrünü (Remaining Useful Life) tahmin eder ve kural tabanlı karar destek protokolüyle bakım aksiyonu önerir.
 
----
+
 
 ## Canlı Servis Erişimi
 
@@ -15,7 +15,7 @@ Uygulama, Render altyapısı üzerinde Docker konteyneri olarak canlıda hizmet 
 
 Not: Sistem sunucusuz ücretsiz katmanda (Free Tier) barındırılmaktadır. 15 dakika süresince istek almadığında uyku moduna geçer; ilk tetiklemede açılış süresi 30–40 saniye sürebilir.
 
----
+
 
 ## Mimari ve Tasarım Tercihleri
 
