@@ -1,10 +1,8 @@
-
-
 # Turbofan Engine Remaining Useful Life (RUL) Prediction API
 
 NASA C-MAPSS FD001 telemetri verileriyle eğitilmiş, endüstriyel standartlarda uçtan uca makine öğrenmesi ve kestirimci bakım servisidir. Servis; çok değişkenli sensör zaman serisi verilerinden kayan pencere özellikleri türetir, motorun kalan faydalı ömrünü (Remaining Useful Life) tahmin eder ve kural tabanlı karar destek protokolüyle bakım aksiyonu önerir.
 
-
+---
 
 ## Canlı Servis Erişimi
 
@@ -13,9 +11,9 @@ Uygulama, Render altyapısı üzerinde Docker konteyneri olarak canlıda hizmet 
 * Canlı API Dokümantasyonu (Swagger UI): https://turbofan-rul-api-ep09.onrender.com/docs
 * Servis Canlılık Kontrolü: https://turbofan-rul-api-ep09.onrender.com/health
 
-Not: Sistem sunucusuz ücretsiz katmanda (Free Tier) barındırılmaktadır. 15 dakika süresince istek almadığında uyku moduna geçer; ilk tetiklemede açılış süresi 30–40 saniye sürebilir.
+> Not: Sistem sunucusuz ücretsiz katmanda (Free Tier) barındırılmaktadır. 15 dakika süresince istek almadığında uyku moduna geçer; ilk tetiklemede açılış süresi 30–40 saniye sürebilir.
 
-
+---
 
 ## Mimari ve Tasarım Tercihleri
 
@@ -38,7 +36,7 @@ MLflow takip sisteminde kayıtlı doğrulanabilir deney sonuçları:
 | Baseline (Linear Regression) | Doğrulama (Validation) | 17.93 | 0.815 | - | Referans Baseline |
 | XGBoost + Rolling Features | Test (FD001 Hold-out) | 16.52 | 0.830 | 475.87 | Üretim Modeli (Run: 6ccbe5e4) |
 
-Not: Tablodaki değerler mlruns/ kayıt defterindeki gerçek çalıştırma çıktılarıyla birebir eşleşmektedir. Doğrulama bölmesi motor bazlı (unit-based group split) yapılmış, ardışık çevrimlerin sızması engellenmiştir.
+> Not: Tablodaki değerler mlruns/ kayıt defterindeki gerçek çalıştırma çıktılarıyla birebir eşleşmektedir. Doğrulama bölmesi motor bazlı (unit-based group split) yapılmış, ardışık çevrimlerin sızması engellenmiştir.
 
 ### 4. Servis Mimarisi (FastAPI)
 * Bellek Önbellekleme (Lifespan Context): Sabit üretim modeli servis ayağa kalkarken RAM'e bir defa alınır; disk okuma maliyeti sıfırlanarak milisaniye gecikme hedeflenir.
@@ -66,7 +64,11 @@ Not: Tablodaki değerler mlruns/ kayıt defterindeki gerçek çalıştırma çı
 ### 2. Kalan Faydalı Ömür Kestirimi
 
 * Yol: POST /predict
+
+
 * İşlev: Motorun geçmiş telemetri serisini alır, 81 özelliği türetir ve RUL kestirimi ile bakım aksiyonu üretir.
+
+
 
 Örnek İstek Gövdesi:
 
@@ -120,9 +122,15 @@ Not: Tablodaki değerler mlruns/ kayıt defterindeki gerçek çalıştırma çı
 
 | Tahmin Edilen RUL | Durum Kodu | Önerilen Bakım Aksiyonu |
 | --- | --- | --- |
-| > 50 Çevrim | HEALTHY | Sensör değerleri nominal aralıkta; planlı uçuş operasyonu sürdürülür. |
-| 21 – 50 Çevrim | WARNING | Aşınma trendi tespit edildi; periyodik kontrol sıklığı artırılır, planlı bakım listesine alınır. |
-| 0 – 20 Çevrim | CRITICAL | Kritik eşik aşıldı; motor bir sonraki uçuştan önce hangara çekilerek acil bakıma alınır. |
+| > 50 Çevrim | HEALTHY | Sensör değerleri nominal aralıkta; planlı uçuş operasyonu sürdürülür.
+
+ |
+| 21 – 50 Çevrim | WARNING | Aşınma trendi tespit edildi; periyodik kontrol sıklığı artırılır, planlı bakım listesine alınır.
+
+ |
+| 0 – 20 Çevrim | CRITICAL | Kritik eşik aşıldı; motor bir sonraki uçuştan önce hangara çekilerek acil bakıma alınır.
+
+ |
 
 ---
 
@@ -130,13 +138,21 @@ Not: Tablodaki değerler mlruns/ kayıt defterindeki gerçek çalıştırma çı
 
 ### 1. Veri Setinin Temini (C-MAPSS FD001)
 
-Eğitim boru hattını yerelde sıfırdan çalıştırmak için NASA C-MAPSS veri setini indirin:
-
 1. NASA Prognostics Data Repository üzerinden C-MAPSS veri setini temin edin.
+
+
 2. Aşağıdaki üç dosyayı projenin data/raw/ dizinine yerleştirin:
+
+
 * train_FD001.txt
+
+
 * test_FD001.txt
+
+
 * RUL_FD001.txt
+
+
 
 
 
@@ -188,17 +204,20 @@ turbofan-rul/
 ├── Dockerfile                  # Konteyner derleme talimatı
 ├── requirements.txt            # Python kütüphane bağımlılıkları
 ├── README.md                   # Proje teknik dokümantasyonu
+├── LICENSE                     # MIT Lisansı
 ├── models/
 │   └── production_model/       # Üretime mühürlenmiş XGBoost model ağırlıkları
 ├── src/
 │   ├── api/
 │   │   ├── app.py              # FastAPI giriş noktası, lifespan ve yönlendirme
 │   │   └── schemas.py          # Pydantic v2 veri modelleri ve doğrulayıcılar
+│   ├── utils/
+│   │   └── logger.py           # Merkezi loglama modülü
 │   ├── features.py             # Kayan pencere ve delta özellik türetimi
 │   ├── train.py                # Model eğitim boru hattı
 │   └── config.py               # Proje sabitleri ve yol yapılandırmaları
 ├── tests/
-│   └── test_features.py        # Özellik türetimi ve hizalama regresyon testleri
+│   ├── test_api.py             # HTTP uç nokta duman ve şema testleri
+│   ├── test_features.py        # Özellik türetimi ve hizalama regresyon testleri
+│   └── test_metrics.py         # NASA PHM 2008 skor fonksiyonu testleri
 └── notebooks/                  # Keşifçi veri analizi not defterleri
-
-```
